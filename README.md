@@ -1,2 +1,5 @@
-# actionsoftwaresupport.github.io
-Github Pages Site for Documentation
+Action Software Support Central
+
+Kid Tasker
+  Privacy Notice
+  Parent Guide
