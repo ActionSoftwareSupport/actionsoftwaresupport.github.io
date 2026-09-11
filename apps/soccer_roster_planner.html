@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>U10 Soccer Lineup & Multi-Wave Rotation Planner</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @media print {
+            body { background: white !important; color: black !important; padding: 0 !important; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            .card-box { border: 1px solid #cbd5e1 !important; box-shadow: none !important; margin-bottom: 12px !important; page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans pb-12">
+    <div id="app" class="max-w-6xl mx-auto p-4 md:p-6">
+        
+        <!-- Header -->
+        <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between border-b pb-4 gap-4 no-print">
+            <div>
+                <h1 class="text-3xl font-bold text-emerald-700"><i class="fa-solid fa-soccer-ball"></i> U10 Lineup Planner</h1>
+                <p class="text-slate-500 text-sm">2-Wave rotation engine, goalie rest adjustments, and configurable play-time balancing.</p>
+            </div>
+            <div class="flex gap-2">
+                <button @click="activeTab = 'roster'" :class="activeTab === 'roster' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'" class="px-4 py-2 rounded-lg font-medium shadow-sm transition">
+                    <i class="fa-solid fa-users mr-1"></i> Roster & Settings
+                </button>
+                <button @click="activeTab = 'lineup'" :class="activeTab === 'lineup' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'" class="px-4 py-2 rounded-lg font-medium shadow-sm transition">
+                    <i class="fa-solid fa-clipboard-list mr-1"></i> Match Plan
+                </button>
+            </div>
+        </header>
+
+        <!-- TAB 1: ROSTER & MATCH SETTINGS -->
+        <div v-show="activeTab === 'roster'" class="grid grid-cols-1 lg:grid-cols-3 gap-6 no-print">
+            
+            <!-- Settings -->
+            <div class="lg:col-span-1 space-y-6">
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-semibold text-slate-700 mb-4 border-b pb-2"><i class="fa-solid fa-sliders mr-2 text-emerald-600"></i> Match Settings</h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Half Duration (Minutes)</label>
+                            <input type="number" v-model.number="settings.halfDuration" class="w-full border rounded-lg p-2 bg-slate-50 text-center font-bold">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Field Positions (Excluding Goalie)</label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-xs text-slate-600">Forwards (FWD)</label>
+                                    <input type="number" v-model.number="settings.fwdCount" min="1" max="5" class="w-full border rounded-lg p-2 text-center font-bold">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-slate-600">Defenders (DEF)</label>
+                                    <input type="number" v-model.number="settings.defCount" min="1" max="5" class="w-full border rounded-lg p-2 text-center font-bold">
+                                </div>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">Field Size: <strong>{{ settings.fwdCount + settings.defCount + 1 }}v{{ settings.fwdCount + settings.defCount + 1 }}</strong></p>
+                        </div>
+
+                        <!-- Equal Time Toggle Option -->
+                        <div class="pt-2 border-t">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-semibold uppercase text-slate-700">Rotation Strategy</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="settings.prioritizeFairness" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                                </label>
+                            </div>
+                            <p class="text-xs font-medium mt-1" :class="settings.prioritizeFairness ? 'text-emerald-700' : 'text-amber-700'">
+                                <i :class="settings.prioritizeFairness ? 'fa-solid fa-scale-balanced' : 'fa-solid fa-star'"></i>
+                                {{ settings.prioritizeFairness ? 'Prioritize Strict Equal Minutes' : 'Allow Weighted Play Time for Stars' }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add Player Form -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-semibold text-slate-700 mb-3"><i class="fa-solid fa-user-plus mr-2 text-emerald-600"></i> Add Player</h2>
+                    <form @submit.prevent="addPlayer" class="space-y-3">
+                        <input v-model="newPlayerName" type="text" placeholder="Player Name" class="w-full border rounded-lg p-2 text-sm" required>
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm text-slate-600">Position Ability:</label>
+                            <select v-model="newPlayerPos" class="border rounded-lg p-1 text-sm bg-slate-50">
+                                <option value="BOTH">Both (FWD & DEF)</option>
+                                <option value="FWD">Forward Only</option>
+                                <option value="DEF">Defender Only</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="newIsStar" v-model="newPlayerStar" class="rounded text-emerald-600">
+                            <label for="newIsStar" class="text-sm font-medium text-amber-600"><i class="fa-solid fa-star"></i> Star / Impact Player (+Play Time)</label>
+                        </div>
+                        <button type="submit" class="w-full bg-emerald-600 text-white font-medium py-2 rounded-lg hover:bg-emerald-700 transition">Add Player</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Roster List -->
+            <div class="lg:col-span-2 bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h2 class="text-lg font-semibold text-slate-700"><i class="fa-solid fa-list mr-2 text-emerald-600"></i> Roster</h2>
+                    <span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-semibold">Attending: {{ activePlayersCount }}</span>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
+                            <tr>
+                                <th class="p-2">Present</th>
+                                <th class="p-2">Name</th>
+                                <th class="p-2">Positions</th>
+                                <th class="p-2 text-center">Star Player</th>
+                                <th class="p-2 text-center">Goalie Half 1</th>
+                                <th class="p-2 text-center">Goalie Half 2</th>
+                                <th class="p-2"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">
+                            <tr v-for="player in players" :key="player.id" :class="{'opacity-50 bg-slate-50': !player.available}">
+                                <td class="p-2">
+                                    <input type="checkbox" v-model="player.available" class="w-4 h-4 text-emerald-600 rounded">
+                                </td>
+                                <td class="p-2 font-medium">{{ player.name }}</td>
+                                <td class="p-2">
+                                    <select v-model="player.allowedPos" class="border text-xs rounded p-1 bg-white">
+                                        <option value="BOTH">FWD & DEF</option>
+                                        <option value="FWD">Forward Only</option>
+                                        <option value="DEF">Defender Only</option>
+                                    </select>
+                                </td>
+                                <td class="p-2 text-center">
+                                    <button @click="player.isStar = !player.isStar" class="text-lg focus:outline-none">
+                                        <i :class="player.isStar ? 'fa-solid fa-star text-amber-400' : 'fa-regular fa-star text-slate-300'"></i>
+                                    </button>
+                                </td>
+                                <td class="p-2 text-center">
+                                    <input type="radio" name="gk_h1" :value="player.id" v-model="goalies[1]" :disabled="!player.available" class="text-emerald-600">
+                                </td>
+                                <td class="p-2 text-center">
+                                    <input type="radio" name="gk_h2" :value="player.id" v-model="goalies[2]" :disabled="!player.available" class="text-emerald-600">
+                                </td>
+                                <td class="p-2 text-right">
+                                    <button @click="removePlayer(player.id)" class="text-red-400 hover:text-red-600 p-1"><i class="fa-solid fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: LINEUP & ROTATION GENERATOR -->
+        <div v-show="activeTab === 'lineup'" class="space-y-6">
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-800">2-Wave Match Rotation Plan</h2>
+                    <p class="text-xs text-slate-500">Goalies offset in field halves | Toggle: {{ settings.prioritizeFairness ? 'Strict Fair Play Time' : 'Star Weighted Play Time' }}</p>
+                </div>
+                <div class="flex gap-2 w-full md:w-auto">
+                    <button @click="generateLineup" class="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-lg shadow transition text-sm">
+                        <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Generate Plan
+                    </button>
+                    <button v-if="lineup.length > 0" @click="printPlan" class="flex-1 md:flex-none bg-slate-800 hover:bg-slate-900 text-white font-bold px-5 py-2.5 rounded-lg shadow transition text-sm">
+                        <i class="fa-solid fa-print mr-1"></i> Print / Save PDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- Print Header -->
+            <div class="hidden print-only mb-4 border-b-2 border-slate-800 pb-2">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-900">U10 Soccer Game Day Rotation Sheet</h1>
+                        <p class="text-xs text-slate-600">2 Waves per half | {{ settings.halfDuration }} Min Halves | {{ settings.fwdCount + settings.defCount + 1 }}v{{ settings.fwdCount + settings.defCount + 1 }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Plan Display -->
+            <div v-if="lineup.length > 0" class="space-y-6">
+                <div v-for="(halfPlan, hIdx) in lineup" :key="hIdx" class="card-box bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    
+                    <!-- Half Banner -->
+                    <div class="bg-slate-800 text-white px-4 py-3 flex justify-between items-center">
+                        <span class="font-bold text-emerald-400 text-base">HALF {{ hIdx + 1 }}</span>
+                        <span class="text-xs bg-emerald-700 text-white px-3 py-1 rounded-full font-bold">
+                            <i class="fa-solid fa-hand-paper mr-1"></i> Goalie: {{ getPlayerName(halfPlan.goalieId) }}
+                        </span>
+                    </div>
+
+                    <div class="p-4 space-y-4">
+                        <!-- Wave 0: Kickoff Starters -->
+                        <div class="bg-emerald-50/60 p-3 rounded-lg border border-emerald-100">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-xs font-bold text-emerald-900 uppercase">
+                                    <i class="fa-solid fa-play text-emerald-600 mr-1"></i> Start of Half Starters (Min 0 – {{ Math.round(settings.halfDuration / 3) }})
+                                </span>
+                                <span v-if="halfPlan.startingRestNote" class="text-[11px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-semibold">
+                                    <i class="fa-solid fa-bed mr-1"></i> Rest Note: {{ halfPlan.startingRestNote }}
+                                </span>
+                            </div>
+                            <div class="flex flex-wrap gap-2 text-xs">
+                                <span v-for="p in halfPlan.waves[0].forwards" :key="p.id" class="bg-white border border-emerald-300 text-emerald-900 px-2.5 py-1 rounded font-semibold shadow-sm">
+                                    FWD: {{ p.name }} <i v-if="p.isStar && !settings.prioritizeFairness" class="fa-solid fa-star text-amber-500 text-[10px]"></i>
+                                </span>
+                                <span v-for="p in halfPlan.waves[0].defenders" :key="p.id" class="bg-white border border-blue-300 text-blue-900 px-2.5 py-1 rounded font-semibold shadow-sm">
+                                    DEF: {{ p.name }} <i v-if="p.isStar && !settings.prioritizeFairness" class="fa-solid fa-star text-amber-500 text-[10px]"></i>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Wave 1 Substitution -->
+                        <div class="border-t pt-3">
+                            <span class="text-xs font-bold text-slate-700 uppercase block mb-1">
+                                <i class="fa-solid fa-right-left text-amber-600 mr-1"></i> Substitution Wave 1 (Approx Min {{ Math.round(settings.halfDuration / 3) }})
+                            </span>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left text-xs border border-slate-200 rounded-lg">
+                                    <thead class="bg-slate-100 text-slate-600 font-bold uppercase">
+                                        <tr>
+                                            <th class="p-2 border-b">Player Coming In</th>
+                                            <th class="p-2 border-b">Player Going Out</th>
+                                            <th class="p-2 border-b">Position Target</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100">
+                                        <tr v-for="(sub, sIdx) in halfPlan.wave1Subs" :key="sIdx">
+                                            <td class="p-2 font-bold text-emerald-800">{{ sub.in.name }} <i v-if="sub.in.isStar && !settings.prioritizeFairness" class="fa-solid fa-star text-amber-400"></i></td>
+                                            <td class="p-2 text-slate-600">{{ sub.out.name }} <i v-if="sub.out.isStar && !settings.prioritizeFairness" class="fa-solid fa-star text-amber-400"></i></td>
+                                            <td class="p-2 font-bold" :class="sub.pos === 'FWD' ? 'text-emerald-700' : 'text-blue-700'">{{ sub.pos }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Wave 2 Substitution -->
+                        <div class="border-t pt-3">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-xs font-bold text-slate-700 uppercase">
+                                    <i class="fa-solid fa-right-left text-amber-600 mr-1"></i> Substitution Wave 2 (Approx Min {{ Math.round((settings.halfDuration / 3) * 2) }})
+                                </span>
+                                <span v-if="halfPlan.endingRestNote" class="text-[11px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-semibold">
+                                    <i class="fa-solid fa-bed mr-1"></i> Rest Note: {{ halfPlan.endingRestNote }}
+                                </span>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left text-xs border border-slate-200 rounded-lg">
+                                    <thead class="bg-slate-100 text-slate-600 font-bold uppercase">
+                                        <tr>
+                                            <th class="p-2 border-b">Player Coming In</th>
+                                            <th class="p-2 border-b">Player Going Out</th>
+                                            <th class="p-2 border-b">Position Target</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100">
+                                        <tr v-for="(sub, sIdx) in halfPlan.wave2Subs" :key="sIdx">
+                                            <td class="p-2 font-bold text-emerald-800">{{ sub.in.name }} <i v-if="sub.in.isStar && !settings.prioritizeFairness" class="fa-solid fa-star text-amber-400"></i></td>
+                                            <td class="p-2 text-slate-600">{{ sub.out.name }} <i v-if="sub.out.isStar && !settings.prioritizeFairness" class="fa-solid fa-star text-amber-400"></i></td>
+                                            <td class="p-2 font-bold" :class="sub.pos === 'FWD' ? 'text-emerald-700' : 'text-blue-700'">{{ sub.pos }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Sheet -->
+            <div v-if="lineup.length > 0" class="card-box bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h3 class="font-bold text-slate-700 mb-3 text-sm uppercase tracking-wider"><i class="fa-solid fa-chart-pie mr-2 text-emerald-600"></i> Play Time Balance Summary</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                    <div v-for="stat in playerStats" :key="stat.id" class="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                        <div class="font-bold text-slate-800 flex items-center gap-1">
+                            {{ stat.name }}
+                            <i v-if="stat.isStar && !settings.prioritizeFairness" class="fa-solid fa-star text-amber-400 text-[10px]" title="Star Player (+Weight)"></i>
+                        </div>
+                        <div class="text-slate-500 mt-1">GK Segments: <strong>{{ stat.gkSegments }}</strong></div>
+                        <div class="text-slate-500">Field Segments: <strong>{{ stat.fieldSegments }}</strong></div>
+                        <div class="text-emerald-700 font-bold mt-1">Est. Play Time: ~{{ stat.estMinutes }} mins</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed } = Vue;
+
+        createApp({
+            setup() {
+                const activeTab = ref('roster');
+                
+                const settings = ref({
+                    halfDuration: 25,
+                    fwdCount: 3,
+                    defCount: 3,
+                    prioritizeFairness: true
+                });
+
+                const players = ref([
+                    { id: 1, name: 'Alex', available: true, allowedPos: 'BOTH', isStar: true },
+                    { id: 2, name: 'Sam', available: true, allowedPos: 'FWD', isStar: false },
+                    { id: 3, name: 'Charlie', available: true, allowedPos: 'DEF', isStar: false },
+                    { id: 4, name: 'Jordan', available: true, allowedPos: 'BOTH', isStar: true },
+                    { id: 5, name: 'Taylor', available: true, allowedPos: 'FWD', isStar: false },
+                    { id: 6, name: 'Morgan', available: true, allowedPos: 'DEF', isStar: false },
+                    { id: 7, name: 'Casey', available: true, allowedPos: 'BOTH', isStar: false },
+                    { id: 8, name: 'Riley', available: true, allowedPos: 'BOTH', isStar: true },
+                    { id: 9, name: 'Jamie', available: true, allowedPos: 'DEF', isStar: false },
+                    { id: 10, name: 'Dakota', available: true, allowedPos: 'FWD', isStar: false }
+                ]);
+
+                const goalies = ref({ 1: 1, 2: 4 });
+
+                const newPlayerName = ref('');
+                const newPlayerPos = ref('BOTH');
+                const newPlayerStar = ref(false);
+
+                const lineup = ref([]);
+
+                const activePlayersCount = computed(() => players.value.filter(p => p.available).length);
+
+                const addPlayer = () => {
+                    if (!newPlayerName.value.trim()) return;
+                    players.value.push({
+                        id: Date.now(),
+                        name: newPlayerName.value.trim(),
+                        available: true,
+                        allowedPos: newPlayerPos.value,
+                        isStar: newPlayerStar.value
+                    });
+                    newPlayerName.value = '';
+                    newPlayerStar.value = false;
+                };
+
+                const removePlayer = (id) => {
+                    players.value = players.value.filter(p => p.id !== id);
+                };
+
+                const getPlayerName = (id) => {
+                    const player = players.value.find(p => p.id === id);
+                    return player ? player.name : 'Unassigned';
+                };
+
+                const generateLineup = () => {
+                    const activePlayers = players.value.filter(p => p.available);
+                    const totalFieldNeeded = settings.value.fwdCount + settings.value.defCount;
+
+                    if (activePlayers.length < totalFieldNeeded + 1) {
+                        alert('Not enough active players available!');
+                        return;
+                    }
+
+                    const history = {};
+                    activePlayers.forEach(p => {
+                        history[p.id] = { gkSegments: 0, fieldSegments: 0, benchSegments: 0 };
+                    });
+
+                    const h1GkId = goalies.value[1] || activePlayers[0].id;
+                    const h2GkId = goalies.value[2] || (activePlayers[1] ? activePlayers[1].id : activePlayers[0].id);
+
+                    const halfPlans = [];
+
+                    for (let h = 1; h <= 2; h++) {
+                        const currentGkId = h === 1 ? h1GkId : h2GkId;
+                        const otherGkId = h === 1 ? h2GkId : h1GkId;
+
+                        let startingRestNote = null;
+                        let endingRestNote = null;
+
+                        if (h === 1 && otherGkId) {
+                            endingRestNote = `${getPlayerName(otherGkId)} rests at end of H1 before starting GK in H2`;
+                        }
+                        if (h === 2 && otherGkId) {
+                            startingRestNote = `${getPlayerName(otherGkId)} rests at start of H2 after playing GK in H1`;
+                        }
+
+                        const waves = [];
+
+                        for (let seg = 0; seg < 3; seg++) {
+                            history[currentGkId].gkSegments++;
+
+                            let pool = activePlayers.filter(p => p.id !== currentGkId);
+
+                            let forcedRestPlayerId = null;
+                            if (h === 1 && seg === 2 && otherGkId !== currentGkId) {
+                                forcedRestPlayerId = otherGkId;
+                            } else if (h === 2 && seg === 0 && otherGkId !== currentGkId) {
+                                forcedRestPlayerId = otherGkId;
+                            }
+
+                            // Effective total played segments count: GK segments count 1:1 toward played time
+                            // to ensure full-half goalies get rest when they return to field play.
+                            pool.sort((a, b) => {
+                                const aPlayed = history[a.id].fieldSegments + history[a.id].gkSegments;
+                                const bPlayed = history[b.id].fieldSegments + history[b.id].gkSegments;
+                                
+                                if (aPlayed !== bPlayed) return aPlayed - bPlayed;
+                                
+                                // Apply Star weight ONLY if fair play mode is OFF
+                                if (!settings.value.prioritizeFairness && a.isStar !== b.isStar) {
+                                    return b.isStar ? 1 : -1;
+                                }
+                                return Math.random() - 0.5;
+                            });
+
+                            if (forcedRestPlayerId) {
+                                const forcedRestObj = pool.find(p => p.id === forcedRestPlayerId);
+                                if (forcedRestObj) {
+                                    pool = pool.filter(p => p.id !== forcedRestPlayerId);
+                                    pool.push(forcedRestObj);
+                                }
+                            }
+
+                            let selected = pool.slice(0, totalFieldNeeded);
+                            let bench = pool.slice(totalFieldNeeded);
+
+                            let fwds = [];
+                            let defs = [];
+
+                            selected.forEach(p => {
+                                if (p.allowedPos === 'FWD') fwds.push(p);
+                                else if (p.allowedPos === 'DEF') defs.push(p);
+                            });
+
+                            const flex = selected.filter(p => p.allowedPos === 'BOTH');
+                            flex.forEach(p => {
+                                if (fwds.length < settings.value.fwdCount) fwds.push(p);
+                                else defs.push(p);
+                            });
+
+                            selected.forEach(p => history[p.id].fieldSegments++);
+                            bench.forEach(p => history[p.id].benchSegments++);
+
+                            waves.push({ forwards: fwds, defenders: defs, bench: bench });
+                        }
+
+                        const computeSubs = (wPrev, wNext) => {
+                            const prevSet = [...wPrev.forwards, ...wPrev.defenders];
+                            const nextSet = [...wNext.forwards, ...wNext.defenders];
+
+                            const leaving = prevSet.filter(p => !nextSet.some(np => np.id === p.id));
+                            const entering = nextSet.filter(p => !prevSet.some(pp => pp.id === p.id));
+
+                            const subs = [];
+                            entering.forEach((inP, i) => {
+                                const outP = leaving[i] || leaving[0];
+                                const isFwd = wNext.forwards.some(f => f.id === inP.id);
+                                subs.push({ in: inP, out: outP, pos: isFwd ? 'FWD' : 'DEF' });
+                            });
+                            return subs;
+                        };
+
+                        halfPlans.push({
+                            half: h,
+                            goalieId: currentGkId,
+                            startingRestNote: startingRestNote,
+                            endingRestNote: endingRestNote,
+                            waves: waves,
+                            wave1Subs: computeSubs(waves[0], waves[1]),
+                            wave2Subs: computeSubs(waves[1], waves[2])
+                        });
+                    }
+
+                    lineup.value = halfPlans;
+                };
+
+                const printPlan = () => {
+                    window.print();
+                };
+
+                const playerStats = computed(() => {
+                    if (lineup.value.length === 0) return [];
+                    const activePlayers = players.value.filter(p => p.available);
+                    
+                    return activePlayers.map(p => {
+                        let gkSegs = 0;
+                        let fieldSegs = 0;
+
+                        lineup.value.forEach(hp => {
+                            if (hp.goalieId === p.id) gkSegs += 3;
+                            hp.waves.forEach(w => {
+                                const isPlaying = w.forwards.some(f => f.id === p.id) || w.defenders.some(d => d.id === p.id);
+                                if (isPlaying && hp.goalieId !== p.id) fieldSegs++;
+                            });
+                        });
+
+                        const segMins = settings.value.halfDuration / 3;
+                        const totalMins = (gkSegs + fieldSegs) * segMins;
+
+                        return {
+                            id: p.id,
+                            name: p.name,
+                            isStar: p.isStar,
+                            gkSegments: gkSegs,
+                            fieldSegments: fieldSegs,
+                            estMinutes: Math.round(totalMins)
+                        };
+                    });
+                });
+
+                return {
+                    activeTab,
+                    settings,
+                    players,
+                    goalies,
+                    newPlayerName,
+                    newPlayerPos,
+                    newPlayerStar,
+                    activePlayersCount,
+                    addPlayer,
+                    removePlayer,
+                    getPlayerName,
+                    lineup,
+                    generateLineup,
+                    printPlan,
+                    playerStats
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
